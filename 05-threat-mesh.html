@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>05 · Threat Mesh</title>
+<link rel="stylesheet" href="shader-base.css" />
+<style>
+  :root { --accent: #4d8bff; }
+  body { background: #02040a; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<div class="hud tl">
+  <div class="row"><span class="dot"></span><strong>wp_05</strong>&nbsp;·&nbsp;threat_mesh</div>
+</div>
+<div class="hud bl">
+  <div><span class="k">topo</span> <span class="v">voronoi · 144 nodes</span></div>
+  <div><span class="k">tls</span> <span class="v">1.3 · mtls handshake ok</span></div>
+</div>
+<div class="hud br">
+  <div><span class="k">mouse</span> <span class="v">trace path</span></div>
+  <div><span class="k">click</span> <span class="v">ignite exploit</span></div>
+</div>
+
+<script src="shader-base.js"></script>
+<script id="frag" type="x-shader/x-fragment">
+
+  // Voronoi-based "network mesh". Nodes are jittered grid points; cell
+  // borders form the wires between them. Mouse highlights the cell it sits
+  // in and its neighbors; clicks ignite an exploit wave that flashes
+  // every node it passes.
+
+  vec2 hash22(vec2 p){
+    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+    return fract(sin(p) * 43758.5453123);
+  }
+  float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+  // Returns: x = dist to nearest node (F1), y = dist to 2nd (F2),
+  //          zw = nearest node world position (in same grid units)
+  vec4 voronoi(vec2 x){
+    vec2 n = floor(x);
+    vec2 f = fract(x);
+    float F1 = 8.0, F2 = 8.0;
+    vec2 nearest = vec2(0.0);
+    for (int j = -1; j <= 1; j++){
+      for (int i = -1; i <= 1; i++){
+        vec2 g = vec2(float(i), float(j));
+        vec2 o = hash22(n + g);
+        // slowly drift nodes
+        o = 0.5 + 0.42 * sin(uTime * 0.4 + 6.2831 * o);
+        vec2 r = g + o - f;
+        float d = dot(r, r);
+        if (d < F1){
+          F2 = F1; F1 = d;
+          nearest = n + g + o;
+        } else if (d < F2){
+          F2 = d;
+        }
+      }
+    }
+    return vec4(sqrt(F1), sqrt(F2), nearest);
+  }
+
+  void main(){
+    vec2 uv = gl_FragCoord.xy / uRes.xy;
+    float scale = 110.0; // px per voronoi cell
+    vec2 p = gl_FragCoord.xy / scale;
+    vec2 mp = uMouse / scale;
+
+    vec4 V = voronoi(p);
+    vec4 Vm = voronoi(mp);
+
+    // edge between cells (where F2 - F1 is small)
+    float edge = smoothstep(0.06, 0.0, V.y - V.x);
+
+    // node dot: small bright circle at nearest point
+    float nodeDist = distance(p, V.zw);
+    float node = exp(-pow(nodeDist * 14.0, 2.0));
+
+    // is this pixel's nearest node the same as the mouse's nearest node?
+    float same = step(distance(V.zw, Vm.zw), 0.001);
+    // is it a neighbor? (mouse is close to the boundary between this and another cell)
+    float neighborHint = same;
+
+    // exploit waves from clicks
+    float wave = 0.0;
+    float waveNode = 0.0;
+    for (int i = 0; i < 8; i++){
+      vec4 c = uClicks[i];
+      if (c.w < 0.5) continue;
+      float age = uTime - c.z;
+      if (age < 0.0 || age > 3.0) continue;
+      vec2 cp = c.xy / scale;
+      float dr = distance(p, cp);
+      float r = age * 5.5;
+      wave     += exp(-abs(dr - r) * 3.5) * exp(-age * 0.6);
+      // node-distance from click — light up nodes the wave has passed
+      float nd = distance(V.zw, cp);
+      float passed = step(nd, r) * (1.0 - smoothstep(r - 0.3, r + 0.1, nd));
+      waveNode += passed * exp(-age * 0.5);
+    }
+
+    // colors
+    vec3 base    = vec3(0.012, 0.025, 0.055);
+    vec3 wire    = vec3(0.28, 0.52, 1.00);
+    vec3 hot     = vec3(0.70, 0.92, 1.00);
+    vec3 alert   = vec3(1.00, 0.42, 0.55);
+
+    vec3 color = base;
+
+    // faint cell tint based on node id
+    float cellId = hash(floor(V.zw * 10.0));
+    color += vec3(0.02, 0.04, 0.08) * (0.5 + 0.5 * cellId) * 0.4;
+
+    // wire mesh
+    color += wire * edge * 0.55;
+
+    // mouse-cell glow
+    color += wire * same * 0.18 * (1.0 - V.x);
+
+    // node dots
+    float nodeBright = 0.35 + same * 0.9 + waveNode * 1.4;
+    color += mix(wire, hot, same) * node * nodeBright * 2.0;
+
+    // exploit wave ring
+    color += mix(wire, alert, 0.6) * wave * 0.45;
+
+    // mouse aura
+    float mr = length(gl_FragCoord.xy - uMouse);
+    color += wire * exp(-mr * 0.012) * 0.10;
+    color += hot * exp(-abs(mr - 22.0) * 0.4) * 0.30;
+
+    // vignette + grain
+    vec2 vu = uv - 0.5;
+    color *= 1.0 - dot(vu, vu) * 0.6;
+    color += (hash(gl_FragCoord.xy + uTime) - 0.5) * 0.015;
+
+    gl_FragColor = vec4(color, 1.0);
+  }
+</script>
+<script>
+  ShaderWallpaper.mount({
+    canvas: document.getElementById('stage'),
+    fragment: document.getElementById('frag').textContent,
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# Publish to GitLab Pages. URL: https://<user>.gitlab.io/<repo>/
+pages:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - mkdir -p public
+    - cp -r index.html README.md LICENSE wallpapers public/
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'

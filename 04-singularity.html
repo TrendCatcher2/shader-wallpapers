@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>04 · Singularity</title>
+<link rel="stylesheet" href="shader-base.css" />
+<style>
+  :root { --accent: #ffb347; }
+  body { background: #060300; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<div class="hud tl">
+  <div class="row"><span class="dot"></span><strong>wp_04</strong>&nbsp;·&nbsp;singularity</div>
+</div>
+<div class="hud bl">
+  <div><span class="k">field</span> <span class="v">curl noise · 4 octaves</span></div>
+  <div><span class="k">horizon</span> <span class="v">re — 1.4 × 10⁻³ m</span></div>
+</div>
+<div class="hud br">
+  <div><span class="k">mouse</span> <span class="v">drag the eye</span></div>
+  <div><span class="k">click</span> <span class="v">collapse pulse</span></div>
+</div>
+
+<script src="shader-base.js"></script>
+<script id="frag" type="x-shader/x-fragment">
+
+  // Swirling fluid / plasma vortex. Center is the smoothed mouse position;
+  // clicks compress the field briefly, sending a hot shock outward.
+
+  vec2 hash22(vec2 p){
+    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+    return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
+  }
+  float vnoise(vec2 p){
+    vec2 i = floor(p), f = fract(p);
+    vec2 u = f*f*(3.0-2.0*f);
+    return mix(mix(dot(hash22(i+vec2(0,0)), f-vec2(0,0)),
+                   dot(hash22(i+vec2(1,0)), f-vec2(1,0)), u.x),
+               mix(dot(hash22(i+vec2(0,1)), f-vec2(0,1)),
+                   dot(hash22(i+vec2(1,1)), f-vec2(1,1)), u.x), u.y);
+  }
+  float fbm(vec2 p){
+    float v = 0.0, a = 0.5;
+    for (int i = 0; i < 5; i++){
+      v += a * vnoise(p);
+      p *= 2.02; a *= 0.5;
+    }
+    return v;
+  }
+
+  void main(){
+    vec2 uv = (gl_FragCoord.xy - uRes.xy * 0.5) / uRes.y;
+    vec2 mv = (uMouse - uRes.xy * 0.5) / uRes.y;
+
+    // collapse pulses from clicks
+    float pulse = 0.0;
+    float shock = 0.0;
+    for (int i = 0; i < 8; i++){
+      vec4 c = uClicks[i];
+      if (c.w < 0.5) continue;
+      float age = uTime - c.z;
+      if (age < 0.0 || age > 2.5) continue;
+      pulse += exp(-age * 1.8);
+      vec2 cv = (c.xy - uRes.xy * 0.5) / uRes.y;
+      float dr = distance(uv, cv);
+      float r = age * 1.4;
+      shock += exp(-abs(dr - r) * 9.0) * exp(-age * 1.0);
+    }
+
+    // polar coords around mouse
+    vec2 q = uv - mv;
+    float r = length(q);
+    float a = atan(q.y, q.x);
+
+    // spiral coordinate
+    float spiral = a + log(r + 0.02) * 2.2 - uTime * 0.35;
+
+    // distorted radial sampling for plasma
+    vec2 sp = vec2(cos(spiral), sin(spiral)) * (0.6 + r * 1.8);
+    float n = fbm(sp * 2.0 + uTime * 0.18);
+    float n2 = fbm(sp * 5.0 - uTime * 0.4 + n * 1.5);
+
+    // bands
+    float bands = sin(spiral * 6.0 + n * 4.0 + uTime * 1.2) * 0.5 + 0.5;
+    bands = pow(bands, 2.2);
+
+    // horizon hole at center — dark accretion eye
+    float hole = smoothstep(0.04 + pulse * 0.03, 0.12, r);
+
+    // hot ring just outside the hole
+    float ring = exp(-pow((r - (0.12 + pulse * 0.04)) * 12.0, 2.0));
+
+    // color ramp — deep maroon → ember → amber → cream
+    vec3 deep   = vec3(0.10, 0.02, 0.04);
+    vec3 ember  = vec3(0.85, 0.18, 0.05);
+    vec3 amber  = vec3(1.00, 0.62, 0.18);
+    vec3 cream  = vec3(1.00, 0.92, 0.70);
+
+    float energy = bands * (0.55 + n2 * 0.7) * hole;
+    energy += ring * 1.3;
+    energy += shock * 1.4;
+
+    vec3 color = deep;
+    color = mix(color, ember, smoothstep(0.05, 0.55, energy));
+    color = mix(color, amber, smoothstep(0.45, 0.95, energy));
+    color = mix(color, cream, smoothstep(0.85, 1.20, energy));
+
+    // dim the dead center
+    color *= hole;
+
+    // soft outer radial fade
+    color *= 1.0 - smoothstep(0.8, 1.3, r) * 0.8;
+
+    // very faint grain
+    color += (fract(sin(dot(gl_FragCoord.xy, vec2(12.99, 78.23))) * 43758.5453) - 0.5) * 0.015;
+
+    gl_FragColor = vec4(color, 1.0);
+  }
+</script>
+<script>
+  ShaderWallpaper.mount({
+    canvas: document.getElementById('stage'),
+    fragment: document.getElementById('frag').textContent,
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>02 · Hex Sonar</title>
+<link rel="stylesheet" href="shader-base.css" />
+<style>
+  :root { --accent: #28e5ff; }
+  body { background: #020608; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<div class="hud tl">
+  <div class="row"><span class="dot"></span><strong>wp_02</strong>&nbsp;·&nbsp;hex_sonar</div>
+</div>
+<div class="hud bl">
+  <div><span class="k">range</span> <span class="v">2.4 km · passive</span></div>
+  <div><span class="k">cells</span> <span class="v">1024 nodes · cve-mapped</span></div>
+</div>
+<div class="hud br">
+  <div><span class="k">mouse</span> <span class="v">aim sonar lens</span></div>
+  <div><span class="k">click</span> <span class="v">active ping</span></div>
+</div>
+
+<script src="shader-base.js"></script>
+<script id="frag" type="x-shader/x-fragment">
+
+  // Hexagonal grid scan. Mouse is the sonar origin; a slowly rotating sweep
+  // beam highlights cells it crosses. Clicks emit an expanding ping ring
+  // that lights every hex it touches.
+
+  float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+  // returns (hex_center_offset.xy, distance_to_edge, hex_id.xy)
+  vec4 hexGrid(vec2 p, float s){
+    vec2 r = vec2(1.0, 1.7320508);
+    vec2 h = r * 0.5;
+    vec2 a = mod(p, r) - h;
+    vec2 b = mod(p - h, r) - h;
+    vec2 gv = dot(a,a) < dot(b,b) ? a : b;
+    vec2 id = (p - gv) / r;
+    // edge distance
+    vec2 ag = abs(gv);
+    float ed = 0.5 - max(ag.x * 0.8660254 + ag.y * 0.5, ag.y);
+    return vec4(gv, ed, id.x + id.y * 0.0);
+  }
+
+  void main(){
+    vec2 uv = gl_FragCoord.xy / uRes.xy;
+
+    float scale = 36.0; // px per hex unit
+    vec2 p = gl_FragCoord.xy / scale;
+    vec4 H = hexGrid(p, 1.0);
+    vec2 gv = H.xy;
+    float ed = H.z;
+    // stable per-hex id from world hex center
+    vec2 hexCenter = (gl_FragCoord.xy - gv * scale);
+    float id = hash(floor(hexCenter / scale * 0.999));
+
+    // distance from mouse
+    float d = length(hexCenter - uMouse);
+
+    // rotating sweep beam from mouse
+    vec2 mp = hexCenter - uMouse;
+    float ang = atan(mp.y, mp.x);
+    float sweep = mod(uTime * 0.9 + 3.14159, 6.28318) - 3.14159;
+    float dAng = mod(ang - sweep + 3.14159, 6.28318) - 3.14159;
+    // brighter for cells just behind the sweep (trail)
+    float trail = exp(-pow(max(dAng, 0.0) * 1.6, 1.4)) - 0.18;
+    trail = max(trail, 0.0);
+    float reach = smoothstep(520.0, 40.0, d);
+    float sweepLight = trail * reach;
+
+    // base hex outline (very faint grid)
+    float edge = smoothstep(0.04, 0.0, ed);
+    float fill = smoothstep(0.0, 0.04, ed);
+
+    // some cells are "bugs" — random rare hot spots
+    float bug = step(0.985, hash(floor(hexCenter / scale)));
+    float bugPulse = bug * (0.5 + 0.5 * sin(uTime * 4.0 + id * 30.0));
+
+    // click pings — additive rings expanding from click pos
+    float ping = 0.0;
+    for (int i = 0; i < 8; i++){
+      vec4 c = uClicks[i];
+      if (c.w < 0.5) continue;
+      float age = uTime - c.z;
+      if (age < 0.0 || age > 2.5) continue;
+      float r = age * 700.0;
+      float dd = length(hexCenter - c.xy);
+      ping += exp(-abs(dd - r) * 0.018) * exp(-age * 1.1);
+    }
+
+    // hover highlight on the hex under the cursor
+    float hover = smoothstep(scale * 0.9, 0.0, d) * 0.6;
+
+    vec3 base   = vec3(0.02, 0.07, 0.10);
+    vec3 cyan   = vec3(0.18, 0.92, 1.00);
+    vec3 ember  = vec3(1.00, 0.40, 0.32);
+
+    vec3 color = base;
+    color += vec3(0.06, 0.12, 0.16) * fill * 0.10;            // faint cell fill
+    color += cyan * edge * (0.10 + 0.25 * reach);             // grid lines
+    color += cyan * sweepLight * 0.55;                        // sweep
+    color += cyan * hover;                                    // hover
+    color += cyan * ping * 1.2;                               // click ping
+    color += ember * bugPulse * 0.7 * fill;                   // bugs
+
+    // crosshair under mouse — tiny inner ring
+    float mr = length(gl_FragCoord.xy - uMouse);
+    color += cyan * exp(-abs(mr - 14.0) * 0.4) * 0.6;
+    color += cyan * exp(-mr * 0.06) * 0.05;
+
+    // vignette + grain
+    vec2 vu = uv - 0.5;
+    color *= 1.0 - dot(vu, vu) * 0.6;
+    color += (hash(gl_FragCoord.xy + uTime) - 0.5) * 0.015;
+
+    gl_FragColor = vec4(color, 1.0);
+  }
+</script>
+<script>
+  ShaderWallpaper.mount({
+    canvas: document.getElementById('stage'),
+    fragment: document.getElementById('frag').textContent,
+  });
+</script>
+</body>
+</html>

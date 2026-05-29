@@ -1,0 +1,37 @@
+/* shared chrome for every wallpaper */
+html, body { margin: 0; padding: 0; height: 100%; background: #050608; overflow: hidden; }
+body { font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, Menlo, monospace; color: #cfd6dc; }
+canvas#stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+
+.hud {
+  position: fixed; pointer-events: none;
+  font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: rgba(207, 214, 220, 0.55);
+  font-weight: 500;
+  mix-blend-mode: screen;
+}
+.hud .row { display: flex; align-items: center; gap: 8px; }
+.hud .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent, #00ff88);
+  box-shadow: 0 0 8px var(--accent, #00ff88);
+}
+.hud.tl { top: 22px; left: 26px; }
+.hud.bl { bottom: 22px; left: 26px; line-height: 1.7; }
+.hud.br { bottom: 22px; right: 26px; text-align: right; line-height: 1.7; }
+.hud.tr { top: 22px; right: 26px; text-align: right; }
+.hud strong { color: var(--accent, #00ff88); font-weight: 500; letter-spacing: 0.22em; }
+.hud .k { color: rgba(207, 214, 220, 0.35); }
+.hud .v { color: rgba(207, 214, 220, 0.85); }
+
+.crosshair {
+  position: fixed; pointer-events: none;
+  width: 28px; height: 28px;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: screen;
+}
+.crosshair::before, .crosshair::after {
+  content: ''; position: absolute; background: var(--accent, #00ff88); opacity: 0.7;
+}
+.crosshair::before { left: 50%; top: 0; bottom: 0; width: 1px; transform: translateX(-0.5px); }
+.crosshair::after  { top: 50%; left: 0; right: 0; height: 1px; transform: translateY(-0.5px); }

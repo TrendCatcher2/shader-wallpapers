@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>03 · Glitch Field</title>
+<link rel="stylesheet" href="shader-base.css" />
+<style>
+  :root { --accent: #ff3d8a; }
+  body { background: #060206; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<div class="hud tl">
+  <div class="row"><span class="dot"></span><strong>wp_03</strong>&nbsp;·&nbsp;glitch_field</div>
+</div>
+<div class="hud bl">
+  <div><span class="k">signal</span> <span class="v">corrupted · 11.4% loss</span></div>
+  <div><span class="k">codec</span> <span class="v">h.264 · keyframe drift</span></div>
+</div>
+<div class="hud br">
+  <div><span class="k">mouse</span> <span class="v">tear data blocks</span></div>
+  <div><span class="k">click</span> <span class="v">chroma shock</span></div>
+</div>
+
+<script src="shader-base.js"></script>
+<script id="frag" type="x-shader/x-fragment">
+
+  // A field of data scanlines / horizontal slice blocks. Mouse displaces
+  // nearby rows horizontally with chromatic aberration; clicks throw a
+  // brief full-field RGB-split + barred tear.
+
+  float hash(float n){ return fract(sin(n) * 43758.5453); }
+  float hash2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+  // sample of the "underlying signal" — abstract data field
+  vec3 signal(vec2 uv, float t){
+    // horizontal scan rows + vertical blocky chunks
+    float row   = floor(uv.y * 220.0);
+    float block = floor(uv.x * 24.0 + hash(row) * 4.0);
+    float v = hash2(vec2(block, row * 0.37 + floor(t * 0.5)));
+    v = smoothstep(0.35, 0.95, v);
+    // streaks
+    float streak = step(0.6, hash(row + floor(t * 2.0)));
+    v *= mix(0.4, 1.0, streak);
+    // base hue field — magenta with violet darks
+    vec3 c1 = vec3(1.0, 0.18, 0.55);
+    vec3 c2 = vec3(0.25, 0.05, 0.40);
+    vec3 col = mix(c2, c1, v);
+    // moving scanline darkening
+    col *= 0.7 + 0.3 * sin(uv.y * uRes.y * 0.6 + t * 12.0);
+    return col;
+  }
+
+  void main(){
+    vec2 uv = gl_FragCoord.xy / uRes.xy;
+    vec2 mUV = uMouse / uRes.xy;
+
+    // active glitch strength from clicks (decays fast)
+    float shock = 0.0;
+    for (int i = 0; i < 8; i++){
+      vec4 c = uClicks[i];
+      if (c.w < 0.5) continue;
+      float age = uTime - c.z;
+      if (age < 0.0 || age > 1.2) continue;
+      shock += exp(-age * 5.0);
+    }
+    shock = clamp(shock, 0.0, 1.5);
+
+    // per-row horizontal displacement that intensifies near mouse y
+    float dy = abs(uv.y - mUV.y);
+    float prox = exp(-dy * 10.0);             // mouse vertical proximity
+    float rowSeed = hash(floor(uv.y * 90.0) + floor(uTime * 4.0));
+    float jitter = (rowSeed - 0.5) * 0.10 * (prox + shock * 1.6);
+
+    // horizontal pull toward mouse x in a thick band
+    float pull = (mUV.x - uv.x) * 0.18 * prox;
+
+    // tear bars on click
+    float bar = step(0.92, hash(floor(uv.y * 50.0) + floor(uTime * 30.0))) * shock * 0.18;
+
+    vec2 baseUV = uv + vec2(jitter + pull + bar, 0.0);
+
+    // RGB split — stronger near mouse and during shock
+    float split = 0.004 * (prox + shock * 1.2) + 0.0015;
+    float r = signal(baseUV + vec2( split, 0.0), uTime).r;
+    float g = signal(baseUV,                          uTime).g;
+    float b = signal(baseUV + vec2(-split, 0.0), uTime).b;
+    vec3 col = vec3(r, g, b);
+
+    // mouse-aligned beam — a faint horizontal hot scanline at mouse y
+    float beam = exp(-pow((uv.y - mUV.y) * uRes.y, 2.0) * 0.001);
+    col += vec3(1.0, 0.25, 0.55) * beam * 0.18;
+
+    // vertical seam at mouse x — thin bright slice
+    float seam = exp(-pow((uv.x - mUV.x) * uRes.x, 2.0) * 0.0006);
+    col += vec3(0.6, 0.9, 1.0) * seam * 0.08;
+
+    // shock flash white
+    col += vec3(1.0) * shock * 0.06;
+
+    // film grain + dark vignette
+    col += (hash2(gl_FragCoord.xy + uTime) - 0.5) * 0.04;
+    vec2 vu = uv - 0.5;
+    col *= 1.0 - dot(vu, vu) * 0.7;
+
+    gl_FragColor = vec4(col, 1.0);
+  }
+</script>
+<script>
+  ShaderWallpaper.mount({
+    canvas: document.getElementById('stage'),
+    fragment: document.getElementById('frag').textContent,
+  });
+</script>
+</body>
+</html>
