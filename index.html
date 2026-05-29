@@ -175,8 +175,8 @@
   const grid = document.getElementById('wallpapers');
   grid.innerHTML = data.map(d => `
     <article class="card">
-      <a class="thumb" href="wallpapers/${d.slug}.html" target="_blank" rel="noopener">
-        <img loading="lazy" src="wallpapers/png/${d.slug}.png" alt="${d.name} preview" />
+      <a class="thumb" href="${d.slug}.html" target="_blank" rel="noopener">
+        <img loading="lazy" src="${d.slug}.png" alt="${d.name} preview" />
       </a>
       <div class="body">
         <div class="num">wp_${d.num}</div>
@@ -184,11 +184,11 @@
         <p class="desc">${d.desc}</p>
         <div class="tags">${d.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
         <div class="actions">
-          <a class="btn primary" href="wallpapers/${d.slug}.html" target="_blank" rel="noopener">
+          <a class="btn primary" href="${d.slug}.html" target="_blank" rel="noopener">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8 L13 8 M9 4 L13 8 L9 12"/></svg>
             Open live
           </a>
-          <a class="btn" href="wallpapers/png/${d.slug}.png" download>
+          <a class="btn" href="${d.slug}.png" download>
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2 L8 11 M4 7 L8 11 L12 7 M3 13 L13 13"/></svg>
             Download PNG
           </a>
